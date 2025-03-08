@@ -32,6 +32,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [userId, setUserId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(true);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    isOpen: boolean;
+    type: 'group' | 'subgroup' | 'file';
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Handle session and visibility changes
   useEffect(() => {
@@ -296,7 +302,42 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     });
   };
 
+  const handleConfirmDelete = (type: 'group' | 'subgroup' | 'file', id: string) => {
+    let name = '';
+    
+    if (type === 'group') {
+      name = groups.find(g => g.id === id)?.name || '';
+    } else if (type === 'subgroup') {
+      name = groups
+        .flatMap(g => g.subgroups)
+        .find(s => s.id === id)?.name || '';
+    } else if (type === 'file') {
+      name = groups
+        .flatMap(g => g.subgroups)
+        .flatMap(s => s.files)
+        .find(f => f.id === id)?.name || '';
+    }
+    
+    setDeleteConfirmation({
+      isOpen: true,
+      type,
+      id,
+      name
+    });
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteConfirmation(null);
+  };
+
   const handleDeleteGroup = async (groupId: string) => {
+    if (!isConnected) return;
+    
+    // Ao invés de excluir diretamente, abrir o popup de confirmação
+    handleConfirmDelete('group', groupId);
+  };
+  
+  const executeDeleteGroup = async (groupId: string) => {
     if (!isConnected) return;
 
     const groupName = groups.find(g => g.id === groupId)?.name;
@@ -322,6 +363,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         const connected = await checkConnection();
         setIsConnected(connected);
         reject(new Error('Erro ao excluir grupo'));
+      } finally {
+        setDeleteConfirmation(null);
       }
     });
 
@@ -333,6 +376,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   };
 
   const handleDeleteSubgroup = async (subgroupId: string) => {
+    if (!isConnected) return;
+    
+    // Ao invés de excluir diretamente, abrir o popup de confirmação
+    handleConfirmDelete('subgroup', subgroupId);
+  };
+  
+  const executeDeleteSubgroup = async (subgroupId: string) => {
     if (!isConnected) return;
 
     const subgroupName = groups
@@ -364,6 +414,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         const connected = await checkConnection();
         setIsConnected(connected);
         reject(new Error('Erro ao excluir subgrupo'));
+      } finally {
+        setDeleteConfirmation(null);
       }
     });
 
@@ -375,6 +427,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   };
 
   const handleDeleteFile = async (fileId: string) => {
+    if (!isConnected) return;
+    
+    // Ao invés de excluir diretamente, abrir o popup de confirmação
+    handleConfirmDelete('file', fileId);
+  };
+  
+  const executeDeleteFile = async (fileId: string) => {
     if (!isConnected) return;
 
     const fileName = groups
@@ -406,6 +465,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         const connected = await checkConnection();
         setIsConnected(connected);
         reject(new Error('Erro ao excluir arquivo'));
+      } finally {
+        setDeleteConfirmation(null);
       }
     });
 
@@ -631,8 +692,57 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     );
   }
 
+  // Componente de popup de confirmação
+  const renderDeleteConfirmation = () => {
+    if (!deleteConfirmation || !deleteConfirmation.isOpen) return null;
+
+    const { type, id, name } = deleteConfirmation;
+    
+    let title = '';
+    let message = '';
+    let executeDelete = () => {};
+    
+    if (type === 'group') {
+      title = 'Deletar Grupo';
+      message = `Tem certeza que deseja deletar o grupo "${name}"? Esta ação não pode ser desfeita.`;
+      executeDelete = () => executeDeleteGroup(id);
+    } else if (type === 'subgroup') {
+      title = 'Deletar Subgrupo';
+      message = `Tem certeza que deseja deletar o subgrupo "${name}"? Esta ação não pode ser desfeita.`;
+      executeDelete = () => executeDeleteSubgroup(id);
+    } else if (type === 'file') {
+      title = 'Deletar Arquivo';
+      message = `Tem certeza que deseja deletar o arquivo "${name}"? Esta ação não pode ser desfeita.`;
+      executeDelete = () => executeDeleteFile(id);
+    }
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+          <h3 className="text-xl font-semibold mb-4">{title}</h3>
+          <p className="mb-6 text-gray-300">{message}</p>
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={handleCancelDelete}
+              className="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => executeDelete()}
+              className="px-4 py-2 bg-red-600 rounded-md hover:bg-red-700"
+            >
+              Deletar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
+      {renderDeleteConfirmation()}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Repositório de Arquivos</h1>
